@@ -1,42 +1,141 @@
-const QUERIES = {
-  "pure-veg": [{ query: "pure vegetarian restaurants", label: "Pure veg search" }],
-  "vegan": [{ query: "vegan restaurants and vegan cafes", label: "Vegan search" }],
-  "veg-friendly": [{ query: "vegetarian friendly restaurants with vegetarian food", label: "Veg-friendly search" }],
-  "all": [
-    { query: "pure vegetarian restaurants", label: "Pure veg search" },
-    { query: "vegan restaurants and vegan cafes", label: "Vegan search" },
-    { query: "vegetarian friendly restaurants with vegetarian food", label: "Veg-friendly search" }
-  ]
-};
-const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.googleMapsUri,places.websiteUri,places.priceLevel,places.types";
-export async function onRequestPost({ request, env }) {
-  if (!env.GOOGLE_MAPS_API_KEY) return json({ error: "Restaurant search is not configured. Add GOOGLE_MAPS_API_KEY as a Pages secret." }, 503);
+// Cloudflare Pages Function: POST /api/restaurants
+// City-based Japanese restaurant discovery using Nominatim + Overpass API.
+// No API key is required. The query intentionally uses the exact cuisine=japanese tag.
+export async function onRequestPost({ request }) {
   let body;
-  try { body = await request.json(); } catch { return json({ error: "Invalid JSON request." }, 400); }
-  const lat = Number(body.latitude), lng = Number(body.longitude);
-  const category = ["all","pure-veg","vegan","veg-friendly"].includes(body.category) ? body.category : "all";
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return json({ error: "Valid latitude and longitude are required." }, 400);
+  try { body = await request.json(); }
+  catch { return json({ error: "Send a valid JSON body containing a city." }, 400); }
+
+  const city = typeof body.city === "string" ? body.city.trim() : "";
+  if (!city || city.length > 120) {
+    return json({ error: "Enter a city name, optionally followed by a country (for example, Bengaluru, India)." }, 400);
+  }
+
   try {
-    const groups = await Promise.all(QUERIES[category].map(async item => {
-      const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
-        method:"POST",
-        headers:{"Content-Type":"application/json","X-Goog-Api-Key":env.GOOGLE_MAPS_API_KEY,"X-Goog-FieldMask":FIELD_MASK},
-        body:JSON.stringify({textQuery:item.query,pageSize:10,languageCode:"en",regionCode:"IN",rankPreference:"DISTANCE",locationBias:{circle:{center:{latitude:lat,longitude:lng},radius:5000}}})
+    const boundary = await findCityBoundary(city);
+    if (!boundary) {
+      return json({ error: `Could not find a mapped city boundary for “${city}”. Try adding the country, for example “Bengaluru, India”.` }, 422);
+    }
+
+    const areaId = boundary.osm_type === "relation"
+      ? Number(boundary.osm_id) + 3600000000
+      : Number(boundary.osm_id) + 2400000000;
+    if (!Number.isSafeInteger(areaId) || areaId <= 0) {
+      return json({ error: "The city boundary returned by OpenStreetMap could not be used for a search." }, 422);
+    }
+
+    const query = `[out:json][timeout:60];\narea(${areaId})->.searchArea;\n(\n  nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["cuisine"="japanese"](area.searchArea);\n);\nout center tags;`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 65000);
+    let response;
+    try {
+      response = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "Accept": "application/json" },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal
       });
-      const d = await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(d?.error?.message || "Places API request failed");
-      return (d.places||[]).map(p=>({id:p.id,name:p.displayName?.text||"Restaurant",address:p.formattedAddress||"",latitude:p.location?.latitude,longitude:p.location?.longitude,rating:typeof p.rating==="number"?p.rating:null,ratingCount:typeof p.userRatingCount==="number"?p.userRatingCount:null,mapsUrl:p.googleMapsUri||null,websiteUrl:p.websiteUri||null,priceLevel:p.priceLevel||null,types:Array.isArray(p.types)?p.types:[],searchCategoryLabel:item.label}));
-    }));
-    const byId=new Map();
-    for(const p of groups.flat()){if(!p.id)continue;if(!byId.has(p.id))byId.set(p.id,p);else if(byId.get(p.id).searchCategoryLabel!==p.searchCategoryLabel)byId.get(p.id).searchCategoryLabel="Multiple veg searches";}
-    const places=[...byId.values()].map(p=>({...p,distanceKm:Number.isFinite(p.latitude)&&Number.isFinite(p.longitude)?distanceKm(lat,lng,p.latitude,p.longitude):null})).filter(p=>p.distanceKm===null||p.distanceKm<=8).sort((a,b)=>(a.distanceKm??Infinity)-(b.distanceKm??Infinity)).slice(0,25);
-    return json({places,count:places.length,provider:"Google Places API"});
-  } catch(e) {
-    console.error("Places search failed:",e.message);
-    return json({error:"The restaurant provider could not complete the search. Please try again later."},502);
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      console.error("Overpass request returned status", response.status);
+      return json({ error: "OpenStreetMap's Overpass service is busy or unavailable. Please try again in a little while." }, 502);
+    }
+    const data = await response.json();
+    const seen = new Set();
+    const places = (Array.isArray(data.elements) ? data.elements : []).map(element => {
+      const tags = element.tags || {};
+      const lat = Number.isFinite(element.lat) ? element.lat : element.center?.lat;
+      const lon = Number.isFinite(element.lon) ? element.lon : element.center?.lon;
+      const name = tags["name:en"] || tags.name || tags["official_name"] || "Unnamed Japanese restaurant";
+      const address = formatAddress(tags);
+      const website = tags.website || tags["contact:website"] || tags.url || "";
+      const phone = tags.phone || tags["contact:phone"] || "";
+      const key = `${String(name).trim().toLowerCase()}|${Number.isFinite(lat) ? lat.toFixed(4) : ""}|${Number.isFinite(lon) ? lon.toFixed(4) : ""}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return {
+        id: `${element.type}/${element.id}`,
+        name,
+        address,
+        amenityLabel: amenityLabel(tags.amenity),
+        cuisine: tags.cuisine || "japanese",
+        latitude: Number.isFinite(lat) ? lat : null,
+        longitude: Number.isFinite(lon) ? lon : null,
+        website: safeUrl(website),
+        phone,
+        openingHours: tags.opening_hours || "",
+        osmUrl: `https://www.openstreetmap.org/${encodeURIComponent(element.type)}/${element.id}`
+      };
+    }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+
+    return json({ city: boundary.display_name || city, count: places.length, places, provider: "OpenStreetMap / Overpass API" });
+  } catch (error) {
+    console.error("Japanese restaurant lookup failed:", error?.name || "Error", error?.message || "unknown error");
+    if (error?.name === "AbortError") return json({ error: "The city-wide search took too long. Try again shortly or use a more specific city name." }, 504);
+    return json({ error: "Could not complete the Japanese restaurant search. Please try again later." }, 502);
   }
 }
-export async function onRequestOptions() { return new Response(null,{status:204,headers:headers()}); }
-function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{...headers(),"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});}
-function headers(){return {"Access-Control-Allow-Methods":"POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type"};}
-function distanceKm(a,b,c,d){const rad=x=>x*Math.PI/180;const x=Math.sin(rad(c-a)/2)**2+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(rad(d-b)/2)**2;return 6371*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+
+export async function onRequestOptions() {
+  return new Response(null, { status: 204, headers: corsHeaders() });
+}
+
+async function findCityBoundary(city) {
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("q", city);
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("limit", "8");
+  const response = await fetch(url.toString(), {
+    headers: {
+      "Accept": "application/json",
+      "Accept-Language": "en",
+      "User-Agent": "VYOM-Japanese-Restaurant-Finder/1.0 (+https://auravibecommune.com)"
+    }
+  });
+  if (!response.ok) throw new Error(`Geocoder returned ${response.status}`);
+  const results = await response.json();
+  if (!Array.isArray(results)) return null;
+  // Equivalent to Overpass Turbo's geocodeArea macro: prefer an administrative
+  // relation/way so the query can cover the city's mapped boundary.
+  const candidates = results.filter(item =>
+    ["relation", "way"].includes(item.osm_type) &&
+    (item.class === "boundary" || item.type === "administrative") &&
+    Number.isFinite(Number(item.osm_id))
+  );
+  const candidate = candidates.find(item => item.osm_type === "relation") || candidates[0];
+  if (!candidate) return null;
+  return candidate;
+}
+
+function formatAddress(tags) {
+  const houseStreet = [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" ");
+  const parts = [];
+  if (houseStreet) parts.push(houseStreet);
+  for (const key of ["addr:suburb", "addr:neighbourhood", "addr:city", "addr:town", "addr:village", "addr:postcode"]) {
+    if (tags[key] && !parts.includes(tags[key])) parts.push(tags[key]);
+  }
+  return parts.join(", ") || tags["addr:full"] || tags["addr:place"] || "Address not mapped";
+}
+function amenityLabel(value) {
+  return ({ restaurant: "Japanese restaurant", fast_food: "Japanese fast food", cafe: "Japanese café" })[value] || "Japanese cuisine";
+}
+function safeUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const url = new URL(value.startsWith("www.") ? `https://${value}` : value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch { return ""; }
+}
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders(), "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
+  });
+}
+function corsHeaders() {
+  return { "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" };
+}
