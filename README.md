@@ -1,77 +1,32 @@
-# Aura Vibe Co. Food Finder — Japanese restaurants by city
+# ReelReach AI — Cloudflare Pages MVP
 
-This is the updated Cloudflare Pages version of the existing Aura Vibe Co. food finder. The existing vegetarian food catalogue, filters, favorites, meal builder, nutrition estimates, sharing, and PWA assets are preserved. The old nearby vegetarian restaurant search has been replaced with a city-based **Japanese Restaurant Finder**.
+A deployable static frontend + Cloudflare Pages Functions backend for Instagram Reels content-readiness analysis. Includes browser-side video preview/frame extraction, Cloudflare Workers AI integration, five-category scoring, actionable recommendations, five hashtag suggestions, and a public Google Trends RSS discovery feed.
 
-## Japanese Restaurant Finder
+## Deploy from GitHub to Cloudflare Pages
 
-- Enter a city (for example, `Bengaluru, India`) instead of granting device-location permission.
-- The Cloudflare Pages Function uses OpenStreetMap's Nominatim geocoder to resolve a mapped administrative boundary.
-- It then queries the Overpass API for establishments in that boundary tagged with `cuisine=japanese` and an amenity of `restaurant`, `fast_food`, or `cafe`.
-- Results include mapped names, address fields when available, amenity type, opening hours/phone/website when contributors have mapped them, an OpenStreetMap details link, and a Google Maps search link.
-- Results are deduplicated and alphabetically sorted.
-- No Google Maps API key or billing setup is required.
+1. Create a GitHub repository and upload the contents of this folder to its root (make sure `index.html`, `functions/`, and `wrangler.toml` are at the root).
+2. In Cloudflare Dashboard, go to **Workers & Pages → Create → Pages → Connect to Git** and select the repository.
+3. Framework preset: **None**. Build command: leave blank. Build output directory: `.`.
+4. Deploy. Cloudflare Pages Functions are discovered from the root `functions/` folder.
+5. In the Cloudflare dashboard, open the Pages project settings and ensure **Workers AI** is available/enabled for the project. The `wrangler.toml` declares the `AI` binding. If your dashboard asks you to configure bindings manually, add a Workers AI binding named `AI` and redeploy.
 
-### About the query
+You can also use Wrangler locally after installing Node.js: `npx wrangler pages dev .`.
 
-Overpass Turbo (`https://overpass-turbo.eu/`) is a browser-based query editor. Its `{{geocodeArea:...}}` syntax is a Turbo macro, not raw Overpass API syntax. This app implements the same flow in its backend: geocode the entered city to a boundary, convert the OSM relation/way ID to an Overpass area ID, and run this equivalent query:
+## What is implemented
 
-```overpass
-[out:json][timeout:60];
-area(AREA_ID)->.searchArea;
-(
-  nwr["amenity"~"^(restaurant|fast_food|cafe)$"]
-     ["cuisine"="japanese"](area.searchArea);
-);
-out center tags;
-```
+- Upload validation (MP4, MOV, WebM; maximum 25 MB), in-browser preview, and three representative frames extracted in the browser.
+- `POST /api/analyze`: tries Cloudflare Workers AI vision (`@cf/meta/llama-3.2-11b-vision-instruct`), then text-only AI (`@cf/meta/llama-3.1-8b-instruct`) if vision fails. Returns structured scores, reasons, recommendations, and exactly five hashtags. If the AI binding is not configured, returns clearly labeled heuristic fallback results.
+- `GET /api/trends`: reads the public Google Trends RSS feed for India by default, cached at the edge; if unavailable, returns clearly labeled evergreen content formats rather than pretending those are live trends.
+- Temporary video frames are sent only as part of the analysis request; this project does not persist uploads or maintain user accounts.
 
-The filter is intentionally strict. A place tagged `cuisine=sushi;japanese`, `cuisine=ramen`, or without a cuisine tag will not match unless its value is exactly `japanese`. This helps keep the results Japanese-only, but means some genuine Japanese restaurants may be omitted due to how the community data is tagged. OpenStreetMap coverage is not a complete commercial directory, and listings can be missing or outdated.
+## Important limits
 
-## Run locally
+- The score is **content readiness**, not a probability of virality or forecast of views. Instagram ranking signals and account-specific performance are not available from this app.
+- Google Trends reports public search-interest signals, not Instagram audio/hashtag rankings. Trending search terms should be adapted to a creator's niche rather than blindly used as hashtags.
+- Workers AI model availability and free allocations depend on Cloudflare's current account/model policies and may change. If a model is unavailable, text-only AI is attempted; if the AI binding itself is missing, heuristic mode is used.
+- The uploaded video file is not sent to the backend as a media file for storage; only a few reduced-size JPEG frames plus the creator-provided text and video metadata are used. The backend validates the uploaded file but does not persist it.
+- This is an MVP, not a security-audited production SaaS. Add rate limiting, abuse controls, privacy terms, authentication, and usage monitoring before opening it to the public.
 
-Cloudflare Pages Functions need a local Pages-compatible runtime. Install Wrangler if needed, then run from this directory:
+## Scoring methodology
 
-```bash
-npx wrangler pages dev .
-```
-
-Open the local URL Wrangler prints. The app's static files and `functions/api/restaurants.js` are served together. A basic `python3 -m http.server` can preview the static food tools, but it will not run the `/api/restaurants` function.
-
-## Deploy to Cloudflare Pages
-
-1. Extract the ZIP.
-2. Commit the complete `aura-vibe-cloudflare-deploy` folder contents to a GitHub repository. The `functions/` folder must be at the project root next to `index.html`.
-3. In Cloudflare Dashboard, go to **Workers & Pages → Create application → Pages → Connect to Git** and connect the repository.
-4. Use the production branch `main` (or your chosen branch), build command `exit 0`, and output directory `.`.
-5. Deploy. Cloudflare Pages should discover `functions/api/restaurants.js` as `/api/restaurants`.
-6. Test with a city such as `Bengaluru, India`, then test a second city/country.
-
-Do not use static drag-and-drop/direct upload if you need Pages Functions; use Git integration or Wrangler Pages deployment so the function is included.
-
-## API and privacy notes
-
-- No API key is required for this implementation. It uses public OpenStreetMap Nominatim and Overpass services, which have fair-use policies, rate limits, and no guarantee of availability. Avoid rapid repeated searches and do not use the public endpoints for high-volume production traffic without reviewing their usage policies or arranging suitable infrastructure.
-- The entered city is sent to Nominatim; the resolved area query is sent to Overpass. This app does not persist city searches. Hosting and provider logs may still exist under their respective policies.
-- OpenStreetMap data is licensed under the Open Database License (ODbL). Keep attribution visible: “© OpenStreetMap contributors”. Review the current attribution and usage requirements before production launch.
-- Restaurant records are community-contributed, not manually verified. A mapped Japanese cuisine tag is not a guarantee of authenticity, current operation, menu, or dietary suitability.
-- The app creates Google Maps search links from the restaurant name/address; these are convenience links, not provider-verified business profile URLs. Website links are shown only when present in OSM tags and pass an HTTP(S) URL check.
-- Add abuse protection and consider a self-hosted/contracted geocoding and Overpass service before high-traffic public launch.
-
-## Existing food finder features
-
-- Responsive, accessible dark UI
-- Searchable vegetarian food catalogue
-- Vegetarian/vegan, category, and meal filters
-- High-protein, budget-friendly, and favorites quick filters
-- Approximate protein and calorie estimates
-- Meal builder with quantity controls, totals, share sheet, and clipboard fallback
-- Local browser storage for favorites and meal selection
-- PWA manifest and service worker
-
-## Files
-
-- `index.html` — app UI, food catalogue, and city-based Japanese restaurant search
-- `functions/api/restaurants.js` — Cloudflare Pages Function for Nominatim + Overpass
-- `manifest.webmanifest` — PWA metadata
-- `sw.js` — basic offline cache
-- `icon.svg` — app icon
+The AI is asked to score five dimensions from 0–100: opening hook (25%), story and clarity (20%), visual storytelling (20%), audience fit (15%), and share/save potential (20%). The final score should be interpreted as a structured editorial checklist. It does not estimate expected reach. In fallback mode the same categories use simple rule-based baselines and are labeled as heuristic.
