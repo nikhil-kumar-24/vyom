@@ -1,18 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 172 34" role="img" aria-label="vyom.ai">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 182 34" role="img" aria-label="vyom.ai">
   <defs>
-    <linearGradient id="vyomFill" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff7a7a"/>
-      <stop offset=".55" stop-color="#eb5d62"/>
-      <stop offset="1" stop-color="#7a1115"/>
+    <linearGradient id="flameFill" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#5c1206"/>
+      <stop offset=".3" stop-color="#c9291c"/>
+      <stop offset=".6" stop-color="#ff7a00"/>
+      <stop offset=".85" stop-color="#ffc233"/>
+      <stop offset="1" stop-color="#fff3c4"/>
     </linearGradient>
-    <filter id="vyomGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="2.4" result="blur"/>
-      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.85  0 0 0 0 0.2  0 0 0 0 0.25  0 0 0 0.55 0"/>
+    <linearGradient id="flameFillSoft" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#4a150c"/>
+      <stop offset=".4" stop-color="#b3331f"/>
+      <stop offset=".75" stop-color="#ff9a3d"/>
+      <stop offset="1" stop-color="#ffe18a"/>
+    </linearGradient>
+    <filter id="glowOuter" x="-60%" y="-80%" width="220%" height="280%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4.2" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 1  0 0 0 0 0.45  0 0 0 0 0.05  0 0 0 0.75 0"/>
+    </filter>
+    <filter id="glowInner" x="-50%" y="-70%" width="200%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 1  0 0 0 0 0.75  0 0 0 0 0.25  0 0 0 0.9 0"/>
     </filter>
   </defs>
-  <g filter="url(#vyomGlow)">
-    <text x="2" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="26" letter-spacing="0.5" fill="#eb5d62">VYOM</text>
+  <g filter="url(#glowOuter)">
+    <text x="2" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="26" letter-spacing="0.5" fill="#ff7a00">VYOM</text>
+    <text x="110" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="20" letter-spacing="0.5" fill="#ff7a00">AI</text>
   </g>
-  <text x="2" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="26" letter-spacing="0.5" fill="url(#vyomFill)">VYOM</text>
-  <text x="100" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="20" letter-spacing="0.5" fill="#b4a3a3">AI</text>
+  <g filter="url(#glowInner)">
+    <text x="2" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="26" letter-spacing="0.5" fill="#ffc233">VYOM</text>
+    <text x="110" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="20" letter-spacing="0.5" fill="#ffc233">AI</text>
+  </g>
+  <text x="2" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="26" letter-spacing="0.5" fill="url(#flameFill)">VYOM</text>
+  <text x="110" y="25" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="20" letter-spacing="0.5" fill="url(#flameFillSoft)">AI</text>
 </svg>
