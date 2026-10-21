@@ -8,3 +8,4 @@ README.md
 *.log
 .wrangler/
 .git/
+node_modules/
