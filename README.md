@@ -15,7 +15,7 @@ You can also use Wrangler locally after installing Node.js: `npx wrangler pages 
 ## What is implemented
 
 - Upload validation (MP4, MOV, WebM; maximum 25 MB), in-browser preview, and three representative frames extracted in the browser.
-- `POST /api/analyze`: tries Cloudflare Workers AI vision (`@cf/meta/llama-3.2-11b-vision-instruct`), then text-only AI (`@cf/meta/llama-3.1-8b-instruct`) if vision fails. Returns structured scores, reasons, recommendations, and exactly five hashtags. If the AI binding is not configured, returns clearly labeled heuristic fallback results.
+- `POST /api/analyze`: tries Cloudflare Workers AI vision (`@cf/google/gemma-4-26b-a4b-it`), then text-only AI (`@cf/zai-org/glm-4.7-flash`) if vision fails. Returns structured scores, reasons, recommendations, and exactly five hashtags. If the AI binding is not configured, returns clearly labeled heuristic fallback results.
 - `GET /api/trends`: reads the public Google Trends RSS feed for India by default, cached at the edge; if unavailable, returns clearly labeled evergreen content formats rather than pretending those are live trends.
 - Temporary video frames are sent only as part of the analysis request; this project does not persist uploads or maintain user accounts.
 
@@ -30,3 +30,13 @@ You can also use Wrangler locally after installing Node.js: `npx wrangler pages 
 ## Scoring methodology
 
 The AI is asked to score five dimensions from 0–100: opening hook (25%), story and clarity (20%), visual storytelling (20%), audience fit (15%), and share/save potential (20%). The final score should be interpreted as a structured editorial checklist. It does not estimate expected reach. In fallback mode the same categories use simple rule-based baselines and are labeled as heuristic.
+
+
+## Troubleshooting Workers AI
+
+If the app reports fallback mode, open Cloudflare Dashboard → Workers & Pages → your Pages project → Settings → Functions → Bindings → Add binding → Workers AI. Set the variable name to exactly `AI`, save, and redeploy. Pages bindings must be configured for the project/environment and a new deployment is required for changes to take effect. The app now tries Gemma 4 vision first, retries text-only inference if needed, and falls back to clearly labeled heuristic recommendations if both model calls fail. Check the Pages Functions logs for the exact provider error (quota, model access, binding, or request validation).
+
+
+## Model configuration
+
+The AI binding is named `AI`. The backend tries `@cf/google/gemma-4-26b-a4b-it` for frame-aware analysis first and falls back to `@cf/zai-org/glm-4.7-flash` for text-only suggestions. GLM-4.7-Flash is a text model; in fallback mode the response must not claim to have inspected video frames.

@@ -1,10 +1,19 @@
-const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const TEXT_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+const MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const TEXT_MODEL = '@cf/zai-org/glm-4.7-flash';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 }
 function clamp(n) { return Math.max(0, Math.min(100, Math.round(Number(n) || 0))); }
+function extractText(result) {
+  if (typeof result === 'string') return result;
+  if (typeof result?.response === 'string') return result.response;
+  if (typeof result?.output_text === 'string') return result.output_text;
+  if (typeof result?.result === 'string') return result.result;
+  if (typeof result?.choices?.[0]?.message?.content === 'string') return result.choices[0].message.content;
+  if (typeof result?.content === 'string') return result.content;
+  return '';
+}
 function parseJson(text) {
   const cleaned = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   const start = cleaned.indexOf('{'); const end = cleaned.lastIndexOf('}');
@@ -40,38 +49,56 @@ function fallback(input, trendItems) {
 }
 
 export async function onRequestPost({ request, env }) {
+  let input;
+  let trends = [];
   try {
     const form = await request.formData();
     const video = form.get('video');
     if (!video || typeof video.arrayBuffer !== 'function') return json({ error: 'Please upload a video.' }, 400);
     if (video.size > 25 * 1024 * 1024) return json({ error: 'Video exceeds the 25 MB limit.' }, 413);
     if (!/^video\/(mp4|quicktime|webm|x-m4v)$/i.test(video.type || '')) return json({ error: 'Use an MP4, MOV or WebM video.' }, 415);
-    const input = {
+    input = {
       niche: String(form.get('niche') || 'General').slice(0, 100), audience: String(form.get('audience') || '').slice(0, 240),
       hook: String(form.get('hook') || '').slice(0, 2000), caption: String(form.get('caption') || '').slice(0, 6000),
       period: form.get('period') === 'month' ? 'month' : 'week', goal: String(form.get('goal') || 'Reach and shares').slice(0, 100), frames: []
     };
     try { input.frames = JSON.parse(String(form.get('frames') || '[]')).filter(x => typeof x === 'string' && x.startsWith('data:image/jpeg;base64,')).slice(0, 3); } catch {}
-    let trends = [];
     try { const t = await fetch(new URL('/api/trends', request.url), { headers: { accept: 'application/json' } }); if (t.ok) trends = ((await t.json()).trends || []).slice(0, 8); } catch {}
     if (!env.AI) return json(fallback(input, trends));
     const prompt = `You are a careful Instagram Reels content coach. Review the supplied frame images (if any) and creator-provided text. Never claim you know Instagram's ranking system, future reach, live viral audio, or exact virality probability. Use the trends list only as public search-interest context, not Instagram trend proof. Return ONLY valid JSON with schema: {"score":integer 0-100,"label":"CONTENT READINESS","headline":string,"summary":string,"categories":[{"name":"Opening hook","score":0-100,"reason":string},{"name":"Story & clarity","score":0-100,"reason":string},{"name":"Visual storytelling","score":0-100,"reason":string},{"name":"Audience fit","score":0-100,"reason":string},{"name":"Share & save potential","score":0-100,"reason":string}],"recommendations":[string,string,string,string],"hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5"],"trends":[{"title":string,"reason":string}],"periodLabel":string,"disclaimer":string}. Give exactly 5 relevant, non-spammy hashtags; mix niche and broader tags. Avoid generic #viral/#fyp unless justified. Scores measure content readiness, never predict views. Make recommendations concrete and refer to visible evidence only when supported by frames. If info is missing, say so. Use the requested period to label trend angles. Include up to 4 trend items from the provided public data; do not invent live trends.\nCreator input: ${JSON.stringify({niche:input.niche,audience:input.audience,hook:input.hook,caption:input.caption,goal:input.goal,period:input.period,publicTrendSignals:trends.map(t=>({title:t.title,traffic:t.traffic}))})}`;
     let messages = [{ role: 'user', content: [{ type: 'text', text: prompt }] }];
     for (const frame of input.frames) messages[0].content.push({ type: 'image_url', image_url: { url: frame } });
     let result;
-    try { result = await env.AI.run(MODEL, { messages, max_tokens: 1300 }); }
-    catch (visionError) {
-      // Text-only fallback within Workers AI: still AI-generated, but does not claim to have inspected the video frames.
-      result = await env.AI.run(TEXT_MODEL, { messages: [{ role: 'user', content: prompt + '\nNOTE: Vision processing was unavailable. Do not claim to have seen video frames; assess only the text provided.' }], max_tokens: 1300 });
+    let aiMode = 'ai-vision';
+    try {
+      result = await env.AI.run(MODEL, {
+        messages,
+        max_tokens: 1300,
+        chat_template_kwargs: { enable_thinking: false }
+      });
+    } catch (visionError) {
+      // If vision inference is unavailable, retry with GLM-4.7-Flash (text-only).
+      aiMode = 'ai-text-only';
+      result = await env.AI.run(TEXT_MODEL, {
+        messages: [{ role: 'user', content: prompt + '\nNOTE: Vision processing was unavailable. Do not claim to have seen video frames; assess only the text provided.' }],
+        max_tokens: 1300
+      });
     }
-    const raw = result.response || result.output_text || result.result || '';
+    const raw = extractText(result);
     const parsed = parseJson(raw);
     const categories = Array.isArray(parsed.categories) ? parsed.categories.slice(0, 5).map(c => ({ name: String(c.name || 'Category').slice(0, 80), score: clamp(c.score), reason: String(c.reason || '').slice(0, 350) })) : [];
     const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 5).map(x => String(x).slice(0, 500)) : [];
     let hashtags = Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 5).map(x => { const tag = String(x).replace(/[^#\p{L}\p{N}_]/gu, ''); return tag.startsWith('#') ? tag : '#'+tag; }) : [];
     while (hashtags.length < 5) hashtags.push(['#reelscreator','#contentstrategy','#creatorcommunity','#reelsideas','#instagramtips'][hashtags.length]);
-    return json({ mode: 'ai', score: clamp(parsed.score), label: String(parsed.label || 'CONTENT READINESS'), headline: String(parsed.headline || 'Your report is ready').slice(0, 140), summary: String(parsed.summary || '').slice(0, 500), categories, recommendations: recs, hashtags, trends: Array.isArray(parsed.trends) ? parsed.trends.slice(0, 4).map(t => ({title:String(t.title||'').slice(0,120),reason:String(t.reason||'').slice(0,220)})) : [], periodLabel: String(parsed.periodLabel || (input.period === 'month' ? 'Monthly trend angles' : 'Weekly trend angles')), disclaimer: String(parsed.disclaimer || 'Content-readiness score only; not a guarantee of reach or virality.').slice(0, 400) });
+    return json({ mode: aiMode, score: clamp(parsed.score), label: String(parsed.label || 'CONTENT READINESS'), headline: String(parsed.headline || 'Your report is ready').slice(0, 140), summary: String(parsed.summary || '').slice(0, 500), categories, recommendations: recs, hashtags, trends: Array.isArray(parsed.trends) ? parsed.trends.slice(0, 4).map(t => ({title:String(t.title||'').slice(0,120),reason:String(t.reason||'').slice(0,220)})) : [], periodLabel: String(parsed.periodLabel || (input.period === 'month' ? 'Monthly trend angles' : 'Weekly trend angles')), disclaimer: String(parsed.disclaimer || 'Content-readiness score only; not a guarantee of reach or virality.').slice(0, 400) });
   } catch (err) {
-    return json({ error: 'Analysis could not be completed. Check that Workers AI is enabled and try again.', detail: String(err?.message || '').slice(0, 180) }, 500);
+    // Keep the product usable when a model is unavailable, its quota is exhausted,
+    // or the model returns malformed JSON. The UI will clearly label this as fallback.
+    if (input) {
+      const result = fallback(input, trends);
+      result.aiError = String(err?.message || 'Workers AI request failed').slice(0, 180);
+      return json(result);
+    }
+    return json({ error: 'Could not read the uploaded video. Please try an MP4, MOV, or WebM file under 25 MB.', detail: String(err?.message || '').slice(0, 180) }, 500);
   }
 }
