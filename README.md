@@ -1,4 +1,4 @@
-# ReelReach AI — Cloudflare Pages MVP
+# vyom.ai — Cloudflare Workers MVP
 
 A deployable static frontend + Cloudflare Pages Functions backend for Instagram Reels content-readiness analysis. Includes browser-side video preview/frame extraction, Cloudflare Workers AI integration, five-category scoring, actionable recommendations, five hashtag suggestions, and a public Google Trends RSS discovery feed.
 

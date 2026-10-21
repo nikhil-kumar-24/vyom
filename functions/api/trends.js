@@ -9,7 +9,7 @@ export async function onRequestGet({ request }) {
   const url = new URL(request.url);
   const geo = (url.searchParams.get('geo') || 'IN').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'IN';
   try {
-    const rss = await fetch(`https://trends.google.com/trending/rss?geo=${geo}`, { headers: { 'user-agent': 'ReelReachAI/1.0 (public trends RSS reader)', 'accept': 'application/rss+xml, application/xml, text/xml' }, cf: { cacheTtl: 1800, cacheEverything: true } });
+    const rss = await fetch(`https://trends.google.com/trending/rss?geo=${geo}`, { headers: { 'user-agent': 'VyomAI/1.0 (public trends RSS reader)', 'accept': 'application/rss+xml, application/xml, text/xml' }, cf: { cacheTtl: 1800, cacheEverything: true } });
     if (!rss.ok) throw new Error('Trend feed unavailable');
     const xml = await rss.text();
     const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 10).map(m => {

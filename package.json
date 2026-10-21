@@ -1,5 +1,5 @@
 {
-  "name": "reelreach-ai",
+  "name": "vyom-ai",
   "private": true,
   "scripts": {
     "deploy": "wrangler deploy",
