@@ -7,34 +7,47 @@
 <body><main class="wrap">
 <header class="nav"><div class="brand"><img src="vyom-main.png" alt="vyom.ai" class="brand-logo"></div><nav class="nav-links"><a href="/" class="navlink">Home</a><a href="/sfx" class="navlink active">SFX</a></nav><div class="pill">✦ CREATOR GROWTH LAB · BETA</div></header>
 <section class="hero"><div><div class="eyebrow">Free sound effects</div><h1>SFX <span class="grad">library.</span></h1><p>Preview and download bite-sized sound effects pulled from the vyom.ai bundle. Each clip is ready to drop straight into your reels.</p></div></section>
-<section class="panel"><h2>All sound effects</h2><p class="sub">Click play to preview, or download the MP3 directly to your device.</p><div class="sfx-grid" id="sfxGrid"></div></section>
+<section class="panel"><h2>All sound effects</h2><p class="sub">Click play to preview, or download the MP3 directly to your device. Each tile is auto-tagged from its waveform/spectrum, with a few similar free SFX you can grab elsewhere.</p><div class="sfx-grid" id="sfxGrid"></div></section>
 <footer class="footer">VYOM.AI · Built for creators · AI features require Cloudflare Workers AI enabled on your account.</footer></main>
 <script>
 const SFX = [
-  {id:'sfx-001',duration:'0.5s',size:'7 KB'},
-  {id:'sfx-002',duration:'3.8s',size:'45 KB'},
-  {id:'sfx-003',duration:'2.3s',size:'33 KB'},
-  {id:'sfx-004',duration:'3.6s',size:'55 KB'},
-  {id:'sfx-005',duration:'1.4s',size:'19 KB'},
-  {id:'sfx-006',duration:'1.3s',size:'39 KB'},
-  {id:'sfx-007',duration:'0.8s',size:'18 KB'},
-  {id:'sfx-008',duration:'1.0s',size:'13 KB'},
-  {id:'sfx-009',duration:'0.2s',size:'8 KB'},
-  {id:'sfx-010',duration:'0.2s',size:'8 KB'},
-  {id:'sfx-011',duration:'0.2s',size:'8 KB'},
-  {id:'sfx-012',duration:'0.3s',size:'9 KB'},
-  {id:'sfx-013',duration:'0.5s',size:'14 KB'},
-  {id:'sfx-014',duration:'1.6s',size:'34 KB'},
-  {id:'sfx-015',duration:'1.6s',size:'33 KB'},
-  {id:'sfx-016',duration:'2.5s',size:'61 KB'},
-  {id:'sfx-017',duration:'9.5s',size:'235 KB'},
-  {id:'sfx-018',duration:'5.3s',size:'120 KB'}
+  {id:'sfx-001',duration:'0.5s',size:'7 KB',label:'Quick Swipe Whoosh',tag:'fast whoosh',mixTag:'whoosh'},
+  {id:'sfx-002',duration:'3.8s',size:'45 KB',label:'Double Notification Ping',tag:'notification',mixTag:'notification'},
+  {id:'sfx-003',duration:'2.3s',size:'33 KB',label:'Rapid Typewriter Clicks',tag:'typewriter',mixTag:'typewriter'},
+  {id:'sfx-004',duration:'3.6s',size:'55 KB',label:'Digital Glitch Stutter',tag:'glitch',mixTag:'glitch'},
+  {id:'sfx-005',duration:'1.4s',size:'19 KB',label:'Zoom Whoosh Hit',tag:'whoosh impact',mixTag:'whoosh'},
+  {id:'sfx-006',duration:'1.3s',size:'39 KB',label:'Reel Spin Ratchet',tag:'ratchet',mixTag:''},
+  {id:'sfx-007',duration:'0.8s',size:'18 KB',label:'Punchy Impact Thud',tag:'impact thud',mixTag:'thud'},
+  {id:'sfx-008',duration:'1.0s',size:'13 KB',label:'Build-Up Riser',tag:'riser',mixTag:'riser'},
+  {id:'sfx-009',duration:'0.2s',size:'8 KB',label:'UI Pop Click',tag:'pop click',mixTag:'pop'},
+  {id:'sfx-010',duration:'0.2s',size:'8 KB',label:'Soft Tap Click',tag:'click',mixTag:'click'},
+  {id:'sfx-011',duration:'0.2s',size:'8 KB',label:'Snappy Tap',tag:'tap',mixTag:'tap'},
+  {id:'sfx-012',duration:'0.3s',size:'9 KB',label:'Crisp Snap',tag:'snap',mixTag:''},
+  {id:'sfx-013',duration:'0.5s',size:'14 KB',label:'Pop Stutter',tag:'pop',mixTag:'pop'},
+  {id:'sfx-014',duration:'1.6s',size:'34 KB',label:'Deep Bass Hit',tag:'bass hit',mixTag:'bass'},
+  {id:'sfx-015',duration:'1.6s',size:'33 KB',label:'Swoosh With Accent',tag:'swoosh',mixTag:'swoosh'},
+  {id:'sfx-016',duration:'2.5s',size:'61 KB',label:'Camera Shutter Burst',tag:'camera shutter',mixTag:'camera'},
+  {id:'sfx-017',duration:'9.5s',size:'235 KB',label:'Rhythmic Tick Loop',tag:'ticking clock',mixTag:'countdown'},
+  {id:'sfx-018',duration:'5.3s',size:'120 KB',label:'Impact Into Rumble',tag:'explosion rumble',mixTag:'explosion'}
 ];
+// 4 well-known free SFX libraries, linked to a category search so creators can find more like this one.
+// mixTag maps to a known, working Mixkit tag page; falls back to the general library if none fits.
+function similarSfxLinks(tag, mixTag){
+  const q = encodeURIComponent(tag);
+  const mixUrl = mixTag ? `https://mixkit.co/free-sound-effects/${mixTag}/` : 'https://mixkit.co/free-sound-effects/';
+  return [
+    {name:'Pixabay', url:`https://pixabay.com/sound-effects/search/${q}/`},
+    {name:'Mixkit', url:mixUrl},
+    {name:'Freesound', url:`https://freesound.org/search/?q=${q}`},
+    {name:'Zapsplat', url:`https://www.zapsplat.com/?s=${q}`}
+  ];
+}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 document.getElementById('sfxGrid').innerHTML = SFX.map(s=>{
   const mp3 = `sfx-bundle-collection/${s.id}.mp3`;
   const thumb = `sfx-bundle-collection/thumbnails/${s.id}.png`;
-  const label = s.id.replace('sfx-','SFX ');
-  return `<div class="sfx-card"><img class="sfx-thumb" src="${thumb}" alt="${escapeHtml(label)} waveform" loading="lazy"><div class="sfx-card-body"><div class="sfx-card-title">${escapeHtml(label)}</div><div class="sfx-card-meta">${escapeHtml(s.duration)} · ${escapeHtml(s.size)}</div><audio class="sfx-audio" controls preload="none" src="${mp3}"></audio><a class="sfx-download" href="${mp3}" download="${s.id}.mp3">⇩ Download MP3</a></div></div>`;
+  const idLabel = s.id.replace('sfx-','SFX ');
+  const similar = similarSfxLinks(s.tag, s.mixTag).map(l=>`<a href="${l.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.name)}</a>`).join('');
+  return `<div class="sfx-card"><img class="sfx-thumb" src="${thumb}" alt="${escapeHtml(s.label)} waveform" loading="lazy"><div class="sfx-card-body"><div class="sfx-card-title">${escapeHtml(s.label)}</div><div class="sfx-card-meta">${idLabel} · ${escapeHtml(s.duration)} · ${escapeHtml(s.size)}</div><audio class="sfx-audio" controls preload="none" src="${mp3}"></audio><a class="sfx-download" href="${mp3}" download="${s.id}.mp3">⇩ Download MP3</a><div class="sfx-similar"><div class="sfx-similar-label">Similar SFX you can download:</div><div class="sfx-similar-links">${similar}</div></div></div></div>`;
 }).join('');
 </script></body></html>
