@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0b12">
+<title>SFX Library — vyom.ai</title>
+<link rel="stylesheet" href="styles.css"></head>
+<body><main class="wrap">
+<header class="nav"><div class="brand"><div class="brand-logo-wrap"><img src="logo-fire.png" alt="vyom.ai" class="brand-logo"></div></div><nav class="nav-links"><a href="index.html" class="navlink">Home</a><a href="sfx.html" class="navlink active">SFX</a></nav><div class="pill">✦ CREATOR GROWTH LAB · BETA</div></header>
+<section class="hero"><div><div class="eyebrow">Free sound effects</div><h1>SFX <span class="grad">library.</span></h1><p>Preview and download bite-sized sound effects pulled from the vyom.ai bundle. Each clip is ready to drop straight into your reels.</p></div></section>
+<section class="panel"><h2>All sound effects</h2><p class="sub">Click play to preview, or download the MP3 directly to your device.</p><div class="sfx-grid" id="sfxGrid"></div></section>
+<footer class="footer">VYOM.AI · Built for creators · AI features require Cloudflare Workers AI enabled on your account.</footer></main>
+<script>
+const SFX = [
+  {id:'sfx-001',duration:'0.5s',size:'7 KB'},
+  {id:'sfx-002',duration:'3.8s',size:'45 KB'},
+  {id:'sfx-003',duration:'2.3s',size:'33 KB'},
+  {id:'sfx-004',duration:'3.6s',size:'55 KB'},
+  {id:'sfx-005',duration:'1.4s',size:'19 KB'},
+  {id:'sfx-006',duration:'1.3s',size:'39 KB'},
+  {id:'sfx-007',duration:'0.8s',size:'18 KB'},
+  {id:'sfx-008',duration:'1.0s',size:'13 KB'},
+  {id:'sfx-009',duration:'0.2s',size:'8 KB'},
+  {id:'sfx-010',duration:'0.2s',size:'8 KB'},
+  {id:'sfx-011',duration:'0.2s',size:'8 KB'},
+  {id:'sfx-012',duration:'0.3s',size:'9 KB'},
+  {id:'sfx-013',duration:'0.5s',size:'14 KB'},
+  {id:'sfx-014',duration:'1.6s',size:'34 KB'},
+  {id:'sfx-015',duration:'1.6s',size:'33 KB'},
+  {id:'sfx-016',duration:'2.5s',size:'61 KB'},
+  {id:'sfx-017',duration:'9.5s',size:'235 KB'},
+  {id:'sfx-018',duration:'5.3s',size:'120 KB'}
+];
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+document.getElementById('sfxGrid').innerHTML = SFX.map(s=>{
+  const mp3 = `sfx-bundle-collection/${s.id}.mp3`;
+  const thumb = `sfx-bundle-collection/thumbnails/${s.id}.png`;
+  const label = s.id.replace('sfx-','SFX ');
+  return `<div class="sfx-card"><img class="sfx-thumb" src="${thumb}" alt="${escapeHtml(label)} waveform" loading="lazy"><div class="sfx-card-body"><div class="sfx-card-title">${escapeHtml(label)}</div><div class="sfx-card-meta">${escapeHtml(s.duration)} · ${escapeHtml(s.size)}</div><audio class="sfx-audio" controls preload="none" src="${mp3}"></audio><a class="sfx-download" href="${mp3}" download="${s.id}.mp3">⇩ Download MP3</a></div></div>`;
+}).join('');
+</script></body></html>
