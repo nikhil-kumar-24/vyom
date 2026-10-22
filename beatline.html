@@ -10,7 +10,7 @@
 <section class="layout"><div class="panel"><h2>Upload your reel</h2><p class="sub">Detection runs in your browser; only small preview frames are sent for suggestions.</p><form id="form"><label class="drop" id="drop"><input id="video" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v"><div id="droptext"><div class="symbol">⇧</div><strong>Drop your reel here or browse</strong><small>MP4, MOV or WebM · Max 25 MB</small></div></label><video class="preview" id="preview" controls playsinline></video>
 <label class="field"><span>Edit style / vibe (optional)</span><input id="vibe" placeholder="e.g. fast-paced meme edit, cinematic travel montage"></label><div class="status" id="status" role="status"></div><div class="note">Cut points come from pixel differences between sampled frames — a creative starting point, not a frame-perfect edit detector.</div></form></div>
 <div class="panel" id="report"><h2>Your timeline</h2><p class="sub">Each marker is a suggested spot to drop in an SFX.</p><div class="result-empty" id="empty"><div><div class="symbol">✧</div><strong style="display:block;color:#eee;margin:10px 0 5px">Your sections will show up here</strong><span>Upload a reel to break it into sections and get 3 SFX suggestions per edit point.</span></div></div><div id="output" class="hidden"></div></div></section>
-<div class="warning">Cut detection is a pixel-difference heuristic and AI sound suggestions are a creative starting point based only on two still frames per cut — always preview audio against your actual edit before publishing.</div><footer class="footer">VYOM.AI · Built for creators · AI features require Cloudflare Workers AI enabled on your account.</footer></main>
+<div class="warning">Cut detection is a pixel-difference heuristic and AI sound suggestions are a creative starting point based only on two still frames per cut — always preview audio against your actual edit before publishing. Exporting with SFX is experimental, runs entirely in your browser, and only library clips can be mixed in automatically.</div><footer class="footer">VYOM.AI · Built for creators · AI features require Cloudflare Workers AI enabled on your account.</footer></main>
 <script src="sfx-data.js"></script>
 <script>
 const $=id=>document.getElementById(id);let selectedFile=null;
@@ -77,12 +77,84 @@ function renderBeatline(duration,cuts){
   const cards=cuts.map((c,i)=>{
     const match=typeof findSfxByTag==='function'?findSfxByTag(c.sfxTag):null;
     const online=(match?similarSfxLinks(c.sfxTag,match.mixTag).filter(l=>l.name!=='Mixkit'):similarSfxLinks(c.sfxTag,'')).slice(0,match?2:3);
-    const localChip=match?`<div class="tl-chip tl-chip-local"><span class="tl-chip-label">From your library</span><strong>${escapeHtml(match.label)}</strong><audio controls preload="none" src="sfx-bundle-collection/${match.id}.mp3"></audio><a href="sfx-bundle-collection/${match.id}.mp3" download="${match.id}.mp3">⇩ Download</a></div>`:`<div class="tl-chip tl-chip-local tl-chip-empty"><span class="tl-chip-label">From your library</span><span class="note">No close match in the local pack yet.</span></div>`;
+    const localChip=match?`<div class="tl-chip tl-chip-local"><span class="tl-chip-label">From your library</span><strong>${escapeHtml(match.label)}</strong><audio controls preload="none" src="sfx-bundle-collection/${match.id}.mp3"></audio><div class="tl-chip-actions"><a href="sfx-bundle-collection/${match.id}.mp3" download="${match.id}.mp3">⇩ Download</a><button type="button" class="tl-add-btn" data-idx="${i}" data-time="${c.time}" data-sfxid="${match.id}">+ Add to video</button></div></div>`:`<div class="tl-chip tl-chip-local tl-chip-empty"><span class="tl-chip-label">From your library</span><span class="note">No close match in the local pack yet.</span></div>`;
     const onlineChips=online.map(l=>`<a class="tl-chip tl-chip-online" href="${l.url}" target="_blank" rel="noopener noreferrer"><span class="tl-chip-label">From the web</span><strong>${escapeHtml(l.name)}</strong><span class="note">${escapeHtml(c.sfxTag)}</span></a>`).join('');
-    return `<div class="tl-card" data-time="${c.time}"><div class="tl-card-head"><span class="tl-time">${fmtTime(c.time)}</span><strong>${escapeHtml(c.momentLabel||'Edit point '+(i+1))}</strong></div><p class="note">${escapeHtml(c.reason||'')}</p><div class="tl-sfx-row">${localChip}${onlineChips}</div></div>`;
+    return `<div class="tl-card"><div class="tl-card-head" data-time="${c.time}"><span class="tl-time">${fmtTime(c.time)}</span><strong>${escapeHtml(c.momentLabel||'Edit point '+(i+1))}</strong></div><p class="note">${escapeHtml(c.reason||'')}</p><div class="tl-sfx-row">${localChip}${onlineChips}</div></div>`;
   }).join('');
-  $('output').innerHTML=`<div class="tl-wrap"><div class="tl-track" id="timelineTrack"><div class="tl-bar"></div>${markers}</div><div class="note">Click a marker or card to preview that moment in your video.</div></div><div class="tl-cards">${cards}</div>`;
-  $('output').querySelectorAll('[data-time]').forEach(el=>{el.addEventListener('click',()=>{const t=Number(el.dataset.time);if(!isNaN(t)){$('preview').currentTime=t;$('preview').play().catch(()=>{})}})});
+  $('output').innerHTML=`<div class="tl-wrap"><div class="tl-track" id="timelineTrack"><div class="tl-bar"></div>${markers}</div><div class="note">Click a marker or card to preview that moment in your video.</div></div><div class="tl-cards">${cards}</div><div class="tl-export"><div><strong id="exportCount">No SFX added yet</strong><span class="note">Only library clips can be mixed in automatically. Add a few, then export.</span></div><button type="button" class="btn" id="exportBtn" style="width:auto;margin-top:0" disabled>⇩ Export video with SFX</button></div><div class="status" id="exportStatus"></div><div id="exportResult" class="hidden"></div>`;
+  $('output').querySelectorAll('.tl-marker,[data-time]').forEach(el=>{el.addEventListener('click',()=>{const t=Number(el.dataset.time);if(!isNaN(t)){$('preview').currentTime=t;$('preview').play().catch(()=>{})}})});
+  selectedSfx.clear();
+  $('output').querySelectorAll('.tl-add-btn').forEach(btn=>{btn.addEventListener('click',e=>{e.stopPropagation();toggleSfx(Number(btn.dataset.idx),Number(btn.dataset.time),btn.dataset.sfxid,btn)})});
+  $('exportBtn').addEventListener('click',exportVideoWithSfx);
+  updateExportBar();
+}
+const selectedSfx=new Map();
+function toggleSfx(i,time,id,btn){
+  if(selectedSfx.has(i)){selectedSfx.delete(i);btn.textContent='+ Add to video';btn.classList.remove('is-added')}
+  else{selectedSfx.set(i,{time,id});btn.textContent='✓ Added — click to remove';btn.classList.add('is-added')}
+  updateExportBar();
+}
+function updateExportBar(){
+  const n=selectedSfx.size;
+  $('exportCount').textContent=n?`${n} SFX added`:'No SFX added yet';
+  $('exportBtn').disabled=n===0;
+}
+function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.onload=()=>resolve();s.onerror=()=>reject(new Error('Could not load the in-browser video engine. Check your connection and try again.'));document.head.appendChild(s)})}
+let ffmpegInstance=null,ffmpegLoadingPromise=null;
+// Lazily loads ffmpeg.wasm (only when exporting) so the page stays light for everyone else.
+// The small wrapper is self-hosted (vendor/ffmpeg/) because its worker must be same-origin; only the ~30 MB core streams from a CDN.
+async function ensureFfmpegReady(onProgress){
+  if(ffmpegInstance)return ffmpegInstance;
+  if(!ffmpegLoadingPromise)ffmpegLoadingPromise=(async()=>{
+    if(!window.FFmpegWASM)await loadScript('vendor/ffmpeg/ffmpeg.js');
+    if(!window.FFmpegUtil)await loadScript('vendor/ffmpeg/util.js');
+    const ffmpeg=new window.FFmpegWASM.FFmpeg();
+    if(onProgress)ffmpeg.on('progress',({progress})=>onProgress(Math.max(0,Math.min(1,progress))));
+    const baseURL='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
+    await ffmpeg.load({coreURL:await window.FFmpegUtil.toBlobURL(`${baseURL}/ffmpeg-core.js`,'text/javascript'),wasmURL:await window.FFmpegUtil.toBlobURL(`${baseURL}/ffmpeg-core.wasm`,'application/wasm')});
+    ffmpegInstance=ffmpeg;return ffmpeg;
+  })();
+  return ffmpegLoadingPromise;
+}
+async function exportVideoWithSfx(){
+  if(!selectedFile||!selectedSfx.size)return;
+  const btn=$('exportBtn');btn.disabled=true;
+  const setExportStatus=(s,err=false)=>{$('exportStatus').textContent=s;$('exportStatus').className='status'+(err?' err':'')};
+  try{
+    setExportStatus('Loading the in-browser video engine (first time only, ~30 MB)…');
+    const ffmpeg=await ensureFfmpegReady(p=>setExportStatus(`Mixing SFX into your video… ${Math.round(p*100)}%`));
+    setExportStatus('Preparing files…');
+    const ext=selectedFile.type.includes('webm')?'webm':selectedFile.type.includes('quicktime')?'mov':'mp4';
+    await ffmpeg.writeFile('input.'+ext,await window.FFmpegUtil.fetchFile(selectedFile));
+    const picks=[...selectedSfx.values()].sort((a,b)=>a.time-b.time);
+    for(let i=0;i<picks.length;i++)await ffmpeg.writeFile(`sfx${i}.mp3`,await window.FFmpegUtil.fetchFile(`sfx-bundle-collection/${picks[i].id}.mp3`));
+    const inputArgs=['-i','input.'+ext];picks.forEach((_,i)=>inputArgs.push('-i',`sfx${i}.mp3`));
+    const delayChain=picks.map((p,i)=>`[${i+1}:a]adelay=${Math.round(p.time*1000)}|${Math.round(p.time*1000)}[s${i}]`).join(';');
+    const sLabels=picks.map((_,i)=>`[s${i}]`).join('');
+    setExportStatus('Mixing SFX into your video…');
+    let ret;
+    try{
+      const filterWithOriginal=`${delayChain};[0:a]${sLabels}amix=inputs=${picks.length+1}:duration=first:dropout_transition=0[aout]`;
+      ret=await ffmpeg.exec([...inputArgs,'-filter_complex',filterWithOriginal,'-map','0:v','-map','[aout]','-c:v','copy','-c:a','aac','-b:a','192k','-shortest','output.mp4']);
+      if(ret!==0)throw new Error('exit '+ret);
+    }catch{
+      // Likely no original audio track; mix the SFX clips alone over the video instead.
+      const filterSfxOnly=picks.length>1?`${delayChain};${sLabels}amix=inputs=${picks.length}:duration=longest:dropout_transition=0[aout]`:`${delayChain.replace('[s0]','[aout]')}`;
+      ret=await ffmpeg.exec([...inputArgs,'-filter_complex',filterSfxOnly,'-map','0:v','-map','[aout]','-c:v','copy','-c:a','aac','-b:a','192k','-shortest','output.mp4']);
+      if(ret!==0)throw new Error('Could not mix the audio track for this video.');
+    }
+    const data=await ffmpeg.readFile('output.mp4');
+    const blob=new Blob([data.buffer],{type:'video/mp4'});
+    const url=URL.createObjectURL(blob);
+    $('exportResult').classList.remove('hidden');
+    $('exportResult').innerHTML=`<h3 style="margin:14px 0 8px">Exported video</h3><video class="preview" style="display:block" controls src="${url}"></video><a class="sfx-download" href="${url}" download="vyom-reel-with-sfx.mp4">⇩ Download edited video</a>`;
+    const a=document.createElement('a');a.href=url;a.download='vyom-reel-with-sfx.mp4';document.body.appendChild(a);a.click();a.remove();
+    setExportStatus('Done — your edited video has started downloading.');
+  }catch(err){
+    setExportStatus(err?.message||'Could not export this video in your browser. Try a shorter clip or download the clips above and edit manually.',true);
+  }finally{
+    btn.disabled=selectedSfx.size===0;
+  }
 }
 $('form').addEventListener('submit',e=>e.preventDefault());
 </script></body></html>
