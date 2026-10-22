@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0b12">
+<title>Beatline — Scene & SFX Timeline — vyom.ai</title>
+<link rel="stylesheet" href="styles.css"></head>
+<body><main class="wrap">
+<header class="nav"><div class="brand"><img src="vyom-main.png" alt="vyom.ai" class="brand-logo"></div><nav class="nav-links"><a href="/" class="navlink">Home</a><a href="/sfx" class="navlink">SFX</a><a href="/beatline" class="navlink active">Beatline</a></nav><div class="pill">✦ CREATOR GROWTH LAB · BETA</div></header>
+<section class="hero"><div><div class="eyebrow">Scene-aware sound design</div><h1>Find the beat,<br><span class="grad">drop the SFX.</span></h1><p>Upload a reel and Beatline breaks it into sections, spots the cut points, and suggests sound effects for each edit — from your library or the web.</p></div></section>
+<section class="layout"><div class="panel"><h2>Upload your reel</h2><p class="sub">Detection runs in your browser; only small preview frames are sent for suggestions.</p><form id="form"><label class="drop" id="drop"><input id="video" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v"><div id="droptext"><div class="symbol">⇧</div><strong>Drop your reel here or browse</strong><small>MP4, MOV or WebM · Max 25 MB</small></div></label><video class="preview" id="preview" controls playsinline></video>
+<label class="field"><span>Edit style / vibe (optional)</span><input id="vibe" placeholder="e.g. fast-paced meme edit, cinematic travel montage"></label><div class="status" id="status" role="status"></div><div class="note">Cut points come from pixel differences between sampled frames — a creative starting point, not a frame-perfect edit detector.</div></form></div>
+<div class="panel" id="report"><h2>Your timeline</h2><p class="sub">Each marker is a suggested spot to drop in an SFX.</p><div class="result-empty" id="empty"><div><div class="symbol">✧</div><strong style="display:block;color:#eee;margin:10px 0 5px">Your sections will show up here</strong><span>Upload a reel to break it into sections and get 3 SFX suggestions per edit point.</span></div></div><div id="output" class="hidden"></div></div></section>
+<div class="warning">Cut detection is a pixel-difference heuristic and AI sound suggestions are a creative starting point based only on two still frames per cut — always preview audio against your actual edit before publishing.</div><footer class="footer">VYOM.AI · Built for creators · AI features require Cloudflare Workers AI enabled on your account.</footer></main>
+<script src="sfx-data.js"></script>
+<script>
+const $=id=>document.getElementById(id);let selectedFile=null;
+$('video').addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>25*1024*1024){setStatus('Video is larger than 25 MB. Please choose a smaller file.',true);e.target.value='';return}selectedFile=f;$('preview').src=URL.createObjectURL(f);$('preview').style.display='block';$('droptext').innerHTML='<div class="symbol">✓</div><strong>'+escapeHtml(f.name)+'</strong><small>'+(f.size/1024/1024).toFixed(1)+' MB · Ready to analyze</small>';setStatus('Video loaded. Breaking it into sections…');runBeatline()});
+function setStatus(s,err=false){$('status').textContent=s;$('status').className='status'+(err?' err':'')}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmtTime(t){const m=Math.floor(t/60),s=Math.round(t%60);return `${m}:${String(s).padStart(2,'0')}`}
+function seekTo(v,t){return new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;v.removeEventListener('seeked',onSeek);resolve()};const onSeek=()=>finish();v.addEventListener('seeked',onSeek);try{v.currentTime=t}catch{finish()}setTimeout(finish,900)})}
+function grayDiff(a,b){let sum=0;const n=a.length/4;for(let i=0;i<a.length;i+=4){const ga=(a[i]+a[i+1]+a[i+2])/3,gb=(b[i]+b[i+1]+b[i+2])/3;sum+=Math.abs(ga-gb)}return sum/n/255}
+// Samples frames across the video, diffs them to find likely cut points, then grabs a higher-res before/after pair at each.
+async function detectSections(file){
+  return new Promise(resolve=>{
+    const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';
+    const url=URL.createObjectURL(file);v.src=url;let finished=false;
+    const finish=r=>{if(finished)return;finished=true;URL.revokeObjectURL(url);resolve(r)};
+    const overall=setTimeout(()=>finish({duration:v.duration||0,cuts:[]}),25000);
+    v.onerror=()=>{clearTimeout(overall);finish({duration:0,cuts:[]})};
+    v.onloadedmetadata=async()=>{
+      try{
+        const duration=v.duration;
+        if(!duration||!isFinite(duration)){clearTimeout(overall);finish({duration:0,cuts:[]});return}
+        const sampleCount=Math.max(6,Math.min(24,Math.round(duration/1.1)));
+        const pad=Math.min(0.2,duration*0.03);
+        const times=[];for(let i=0;i<sampleCount;i++)times.push(pad+(duration-2*pad)*(i/(sampleCount-1)));
+        const c=document.createElement('canvas'),ctx=c.getContext('2d',{willReadFrequently:true});
+        const DW=48,DH=48;const grays=[];
+        for(const t of times){await seekTo(v,t);c.width=DW;c.height=DH;ctx.drawImage(v,0,0,DW,DH);grays.push(ctx.getImageData(0,0,DW,DH).data)}
+        const diffs=[];for(let i=1;i<grays.length;i++)diffs.push({i,score:grayDiff(grays[i-1],grays[i])});
+        diffs.sort((a,b)=>b.score-a.score);
+        const minGap=Math.max(1.2,duration/14);const picked=[];
+        for(const d of diffs){const t=times[d.i];if(d.score<0.02)continue;if(picked.some(p=>Math.abs(p.time-t)<minGap))continue;picked.push({time:t});if(picked.length>=6)break}
+        picked.sort((a,b)=>a.time-b.time);
+        let finalPicks=picked;
+        if(finalPicks.length<2)finalPicks=[0.12,0.45,0.8].map(f=>({time:duration*f}));
+        const cuts=[];const BW=256,BH=256;
+        for(const p of finalPicks){
+          const beforeT=Math.max(0,p.time-0.12),afterT=Math.min(duration-0.02,p.time+0.12);
+          await seekTo(v,beforeT);c.width=BW;c.height=BH;ctx.drawImage(v,0,0,BW,BH);const beforeFrame=c.toDataURL('image/jpeg',.6);
+          await seekTo(v,afterT);c.width=BW;c.height=BH;ctx.drawImage(v,0,0,BW,BH);const afterFrame=c.toDataURL('image/jpeg',.6);
+          cuts.push({time:Math.round(p.time*10)/10,beforeFrame,afterFrame});
+        }
+        clearTimeout(overall);finish({duration,cuts});
+      }catch{clearTimeout(overall);finish({duration:v.duration||0,cuts:[]})}
+    };
+  });
+}
+let running=false;
+async function runBeatline(){
+  if(!selectedFile||running)return;running=true;setStatus('Sampling frames and detecting cut points in your browser…');
+  try{
+    const {duration,cuts}=await detectSections(selectedFile);
+    if(!duration||!cuts.length)throw new Error('Could not read enough frames from this video. Try a different file.');
+    setStatus('Found '+cuts.length+' edit point(s). Asking AI for matching SFX…');
+    const res=await fetch('/api/beatline',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({durationSeconds:duration,vibe:$('vibe').value,cuts:cuts.map(c=>({time:c.time,beforeFrame:c.beforeFrame,afterFrame:c.afterFrame}))})});
+    const data=await res.json();if(!res.ok)throw new Error(data.error||'Could not generate SFX suggestions.');
+    renderBeatline(duration,data.cuts||[]);
+    setStatus(data.mode==='ai-vision'?'Timeline ready with AI-matched SFX suggestions.':(data.aiError?'AI is temporarily unavailable; showing heuristic SFX picks.':'AI is not configured, so these are heuristic SFX picks.'));
+  }catch(err){setStatus(err.message||'Could not process this video. Please try again.',true)}
+  finally{running=false}
+}
+function renderBeatline(duration,cuts){
+  $('empty').classList.add('hidden');$('output').classList.remove('hidden');
+  const markers=cuts.map(c=>`<button type="button" class="tl-marker" style="left:${Math.min(99,(c.time/duration*100)).toFixed(2)}%" data-time="${c.time}" title="${escapeHtml(c.momentLabel||'Edit point')}"></button>`).join('');
+  const cards=cuts.map((c,i)=>{
+    const match=typeof findSfxByTag==='function'?findSfxByTag(c.sfxTag):null;
+    const online=(match?similarSfxLinks(c.sfxTag,match.mixTag).filter(l=>l.name!=='Mixkit'):similarSfxLinks(c.sfxTag,'')).slice(0,match?2:3);
+    const localChip=match?`<div class="tl-chip tl-chip-local"><span class="tl-chip-label">From your library</span><strong>${escapeHtml(match.label)}</strong><audio controls preload="none" src="sfx-bundle-collection/${match.id}.mp3"></audio><a href="sfx-bundle-collection/${match.id}.mp3" download="${match.id}.mp3">⇩ Download</a></div>`:`<div class="tl-chip tl-chip-local tl-chip-empty"><span class="tl-chip-label">From your library</span><span class="note">No close match in the local pack yet.</span></div>`;
+    const onlineChips=online.map(l=>`<a class="tl-chip tl-chip-online" href="${l.url}" target="_blank" rel="noopener noreferrer"><span class="tl-chip-label">From the web</span><strong>${escapeHtml(l.name)}</strong><span class="note">${escapeHtml(c.sfxTag)}</span></a>`).join('');
+    return `<div class="tl-card" data-time="${c.time}"><div class="tl-card-head"><span class="tl-time">${fmtTime(c.time)}</span><strong>${escapeHtml(c.momentLabel||'Edit point '+(i+1))}</strong></div><p class="note">${escapeHtml(c.reason||'')}</p><div class="tl-sfx-row">${localChip}${onlineChips}</div></div>`;
+  }).join('');
+  $('output').innerHTML=`<div class="tl-wrap"><div class="tl-track" id="timelineTrack"><div class="tl-bar"></div>${markers}</div><div class="note">Click a marker or card to preview that moment in your video.</div></div><div class="tl-cards">${cards}</div>`;
+  $('output').querySelectorAll('[data-time]').forEach(el=>{el.addEventListener('click',()=>{const t=Number(el.dataset.time);if(!isNaN(t)){$('preview').currentTime=t;$('preview').play().catch(()=>{})}})});
+}
+$('form').addEventListener('submit',e=>e.preventDefault());
+</script></body></html>
