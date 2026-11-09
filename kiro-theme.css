@@ -1,0 +1,191 @@
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --panel: #090909;
+  --line: #292929;
+  --muted: #a7a7b0;
+  --text: #f7f7f8;
+  --purple: #914bff;
+  --pink: #a477ff;
+  --green: #83d6b0;
+  --amber: #f3c66b;
+  --accent: #914bff;
+}
+
+body {
+  background: #000;
+  color: var(--text);
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+}
+
+body::before {
+  display: none;
+}
+
+.hero-card,
+.panel,
+.sfx-card {
+  background: #080808;
+  border-color: #292929;
+  border-radius: 8px;
+}
+
+.mini,
+.trend,
+.rec,
+.benchmark,
+.result-empty,
+.tl-export,
+.tl-chip {
+  background: #080808;
+  border-color: #292929;
+}
+
+.brand-logo-wrap,
+.pill {
+  background: #080808;
+  border-color: #303030;
+}
+
+.pill,
+.eyebrow,
+.navlink.active,
+.small-label,
+.sfx-similar-links a,
+.tl-chip a {
+  color: #b990ff;
+}
+
+.navlink.active {
+  border-bottom-color: var(--accent);
+}
+
+.grad {
+  background: none;
+  color: var(--text);
+}
+
+.hero h1 {
+  letter-spacing: 0;
+}
+
+.btn,
+.sfx-download,
+.tl-add-btn.is-added {
+  background: var(--accent);
+  border-color: var(--accent);
+  border-radius: 8px;
+  color: #fff;
+}
+
+.btn:hover,
+.sfx-download:hover,
+.tl-add-btn.is-added:hover {
+  background: #a36aff;
+  border-color: #a36aff;
+}
+
+.field input,
+.field textarea,
+.field select,
+.report-language select {
+  background: #050505;
+  border-color: #343434;
+  color: var(--text);
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus,
+.report-language select:focus {
+  border-color: var(--accent);
+  outline-color: var(--accent);
+}
+
+.drop {
+  background: #050505;
+  border-color: #3a3a3a;
+}
+
+.drop:hover,
+.drop.drag {
+  border-color: var(--accent);
+  background: #0c0812;
+}
+
+.trend,
+.rec,
+.benchmark,
+.tl-export,
+.tl-chip {
+  background: #080808;
+  border-color: #292929;
+}
+
+.sfx-card,
+.sfx-download,
+.tl-chip,
+.tl-add-btn {
+  border-radius: 8px;
+}
+
+.report-language {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.report-language select {
+  width: min(100%, 180px);
+  min-width: 0;
+  padding: 8px 30px 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.drop .symbol,
+#report .symbol {
+  background: none;
+  color: var(--accent);
+  -webkit-text-fill-color: var(--accent);
+}
+
+.warning {
+  background: #0c0b0e;
+  border-color: #3b2b50;
+}
+
+@media (max-width: 680px) {
+  .nav {
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+
+  .brand-logo {
+    height: 42px;
+    max-width: 138px;
+    object-fit: contain;
+    object-position: left;
+  }
+
+  .nav-links {
+    gap: 12px;
+    margin-left: auto;
+  }
+
+  .pill {
+    flex-basis: 100%;
+    text-align: center;
+  }
+
+  .hero h1 {
+    letter-spacing: 0;
+  }
+}
